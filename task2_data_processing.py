@@ -1,54 +1,53 @@
-import glob
 import os
+import json
+import glob
 import pandas as pd
 
-
 def process_and_clean_data():
-    # Find the JSON file inside data/ folder
+    # Find latest trends json file
     json_files = glob.glob("data/trends_*.json")
     if not json_files:
-        print("No JSON file found in data/ folder!")
+        print("Error: No data JSON files found in data/")
         return
 
-    latest_json = json_files[0]
+    latest_file = max(json_files, key=os.path.getmtime)
+    print(f"Loaded {len(json_files)} stories from {latest_file}")
 
-    # 1. Load the JSON File into DataFrame
-    df = pd.read_json(latest_json)
-    print(f"Loaded {len(df)} stories from {latest_json}")
+    with open(latest_file, "r") as f:
+        data = json.load(f)
 
-    # 2. Clean the Data
-    # Remove duplicate post_ids
-    df = df.drop_duplicates(subset=["post_id"])
+    df = pd.DataFrame(data)
+
+    if df.empty:
+        print("Dataframe is empty!")
+        return
+
+    # Drop missing values in essential columns
+    df = df.dropna(subset=["id", "title", "score"])
+
+    # Remove duplicates based on story id
+    df = df.drop_duplicates(subset=["id"])
     print(f"After removing duplicates: {len(df)}")
 
-    # Drop rows where post_id, title, or score is missing
-    df = df.dropna(subset=["post_id", "title", "score"])
-    print(f"After removing nulls: {len(df)}")
-
-    # Clean whitespace in title column
+    # Clean text columns
     df["title"] = df["title"].astype(str).str.strip()
 
-    # Ensure score and num_comments are integers
+    # Fill missing values for scores and comments
     df["score"] = df["score"].fillna(0).astype(int)
-    df["num_comments"] = df["num_comments"].fillna(0).astype(int)
+    if "comments_count" in df.columns:
+        df["comments_count"] = df["comments_count"].fillna(0).astype(int)
+    elif "num_comments" in df.columns:
+        df["num_comments"] = df["num_comments"].fillna(0).astype(int)
 
     # Filter out stories with score less than 5
     df = df[df["score"] >= 5]
     print(f"After removing low scores: {len(df)}")
 
-    # 3. Save as CSV
+    # Save as CSV
     os.makedirs("data", exist_ok=True)
-    output_csv = "data/trends_clean.csv"
-    df.to_csv(output_csv, index=False)
-    print(f"\nSaved {len(df)} rows to {output_csv}")
-
-    # Print quick summary: stories per category
-    if "category" in df.columns:
-        print("\nStories per category:")
-        category_counts = df["category"].value_counts()
-        for cat, count in category_counts.items():
-            print(f"  {cat:<15} {count}")
-
+    output_path = "data/trends_clean.csv"
+    df.to_csv(output_path, index=False)
+    print(f"Cleaned data saved to {output_path}")
 
 if __name__ == "__main__":
     process_and_clean_data()
